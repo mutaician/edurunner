@@ -9,6 +9,10 @@ import { Track } from './entities/Track';
 import { Player } from './entities/Player';
 import { Portal, PortalManager } from './entities/Portal';
 import { Environment } from './entities/Environment';
+import { questionService } from './services/QuestionService';
+import type { Question } from './services/QuestionService';
+import { scoreManager } from './services/ScoreManager';
+import { UIManager } from './services/UIManager';
 
 export type GameState = 'menu' | 'loading' | 'playing' | 'paused' | 'results';
 
@@ -21,29 +25,24 @@ export class Game {
     private player: Player;
     private portalManager: PortalManager;
     private camera: ArcRotateCamera;
+    private ui: UIManager;
     
-    private state: GameState = 'playing'; // For now, start in playing state
-    private score: number = 0;
+    private state: GameState = 'menu';
     private currentQuestionIndex: number = 0;
+    private questions: Question[] = [];
     
-    // Demo questions for testing visuals
-    private demoQuestions = [
-        { question: "What is 2 + 2?", answers: ["3", "4", "5"], correctIndex: 1 },
-        { question: "Capital of France?", answers: ["London", "Berlin", "Paris"], correctIndex: 2 },
-        { question: "Largest planet?", answers: ["Jupiter", "Saturn", "Earth"], correctIndex: 0 },
-    ];
+    // Game settings
+    private currentTopic: string = '';
+    private currentDifficulty: string = 'medium';
+    private readonly questionsPerGame: number = 10;
     
-    private nextPortalSpawnZ: number = 40; // Spawn portals ahead of player (player at Z=5)
-    private readonly portalSpacing: number = 35; // Spacing between portal sets
+    private nextPortalSpawnZ: number = 40;
+    private readonly portalSpacing: number = 35;
     private activePortalSet: Portal[] = [];
     private waitingForNextQuestion: boolean = false;
-    private questionDisplay: HTMLDivElement | null = null;
 
     constructor() {
         this.canvas = document.getElementById('renderCanvas') as HTMLCanvasElement;
-        
-        // Create question display UI
-        this.createQuestionUI();
         
         this.engine = new Engine(this.canvas, true, {
             preserveDrawingBuffer: true,
@@ -75,8 +74,18 @@ export class Game {
             lanePositions
         );
         
-        // Spawn first set of portals
-        this.spawnNextPortals();
+        // Create UI Manager with callbacks
+        this.ui = new UIManager({
+            onStartGame: (topic, difficulty) => this.startGame(topic, difficulty),
+            onResumeGame: () => this.togglePause(),
+            onRestartGame: () => this.restartGame(),
+            onBackToMenu: () => this.backToMenu(),
+        });
+        
+        // Connect score manager to UI
+        scoreManager.onScoreChange = (score, total) => {
+            this.ui.updateScore(score, total);
+        };
 
         // Start render loop
         this.engine.runRenderLoop(() => {
@@ -89,37 +98,121 @@ export class Game {
         window.addEventListener('resize', () => {
             this.engine.resize();
         });
+        
+        // Setup pause key
+        this.setupPauseControl();
 
         // Debug info
         console.log('🎮 EduRunner initialized!');
-        console.log('Controls: Arrow keys or A/D to move, Swipe on mobile');
+        console.log('Controls: Arrow keys or A/D to move, ESC to pause');
+    }
+
+    private setupPauseControl(): void {
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (this.state === 'playing') {
+                    this.togglePause();
+                } else if (this.state === 'paused') {
+                    this.togglePause();
+                }
+            }
+        });
+    }
+
+    private async startGame(topic: string, difficulty: string): Promise<void> {
+        this.currentTopic = topic;
+        this.currentDifficulty = difficulty;
+        
+        // Show loading screen
+        this.ui.showScreen('loading');
+        
+        try {
+            // Fetch questions from API (or fallback)
+            this.questions = await questionService.fetchQuestions({
+                topic,
+                difficulty: difficulty as 'easy' | 'medium' | 'hard',
+                count: this.questionsPerGame
+            });
+            
+            console.log(`📚 Loaded ${this.questions.length} questions on "${topic}"`);
+            
+            // Initialize game state
+            this.resetGameState();
+            
+            // Initialize score manager
+            scoreManager.startGame(topic, difficulty, this.questions.length);
+            
+            // Show game UI and spawn first portals
+            this.ui.showScreen('game');
+            this.state = 'playing';
+            this.spawnNextPortals();
+            
+        } catch (error) {
+            console.error('Failed to load questions:', error);
+            // Show error and go back to menu
+            alert('Failed to load questions. Please try again.');
+            this.ui.showScreen('menu');
+        }
+    }
+
+    private resetGameState(): void {
+        this.currentQuestionIndex = 0;
+        this.nextPortalSpawnZ = 40;
+        this.waitingForNextQuestion = false;
+        
+        // Clear any existing portals
+        this.portalManager.clearAll();
+        this.activePortalSet = [];
+        
+        // Reset player position
+        this.player.resetPosition();
+    }
+
+    private togglePause(): void {
+        if (this.state === 'playing') {
+            this.state = 'paused';
+            this.ui.showScreen('paused');
+            console.log('⏸️ Game paused');
+        } else if (this.state === 'paused') {
+            this.state = 'playing';
+            this.ui.showScreen('game');
+            console.log('▶️ Game resumed');
+        }
+    }
+
+    private restartGame(): void {
+        // Restart with same settings
+        this.startGame(this.currentTopic, this.currentDifficulty);
+    }
+
+    private backToMenu(): void {
+        this.state = 'menu';
+        this.portalManager.clearAll();
+        this.activePortalSet = [];
+        this.ui.showScreen('menu');
+        this.ui.hideQuestion();
     }
 
     private createCamera(): ArcRotateCamera {
-        // Camera positioned behind and above the player
-        // Player is at Z=5, camera target slightly ahead of player
         const camera = new ArcRotateCamera(
             "camera",
-            -Math.PI / 2,    // Alpha: directly behind
-            Math.PI / 2.8,   // Beta: slight tilt down
-            15,              // Radius: distance from target
-            new Vector3(0, 2, 10), // Target: ahead of player (player at Z=5)
+            -Math.PI / 2,
+            Math.PI / 2.8,
+            15,
+            new Vector3(0, 2, 10),
             this.scene
         );
         
-        // Lock camera to prevent user rotation
+        // Lock camera
         camera.lowerAlphaLimit = camera.upperAlphaLimit = -Math.PI / 2;
         camera.lowerBetaLimit = camera.upperBetaLimit = Math.PI / 2.8;
         camera.lowerRadiusLimit = camera.upperRadiusLimit = 15;
-        
-        // Standard FOV
         camera.fov = 0.8;
         
-        // Add subtle camera movement
+        // Subtle camera movement
         let cameraTime = 0;
         this.scene.onBeforeRenderObservable.add(() => {
             cameraTime += 0.01;
-            // Very subtle floating motion
             camera.target.y = 2 + Math.sin(cameraTime * 0.3) * 0.05;
         });
         
@@ -151,9 +244,8 @@ export class Game {
         for (const portal of this.activePortalSet) {
             const portalPos = portal.getPosition();
             
-            // Check if player has passed this portal set (Z-crossing)
+            // Check if player has passed this portal set
             if (portalPos.z < playerPos.z - 1) {
-                // Player has passed the portals - determine which one they went through
                 this.handlePortalPassed(playerLane);
                 return;
             }
@@ -163,7 +255,7 @@ export class Game {
     private handlePortalPassed(playerLane: number): void {
         this.waitingForNextQuestion = true;
         
-        // Find which portal was selected and reveal all
+        // Find selected and correct portals
         let selectedPortal: Portal | null = null;
         let correctPortal: Portal | null = null;
         
@@ -177,58 +269,56 @@ export class Game {
             }
         }
         
-        // Update score
+        const currentQuestion = this.questions[this.currentQuestionIndex];
+        
+        // Update score and show feedback
         if (selectedPortal?.isCorrect) {
-            this.score++;
-            console.log(`✅ Correct! Score: ${this.score}`);
+            scoreManager.addCorrect();
             this.showCorrectFeedback();
+            console.log(`✅ Correct! Score: ${scoreManager.getScore()}`);
         } else {
-            console.log(`❌ Wrong! The correct answer was: ${correctPortal?.answerText}`);
+            scoreManager.addWrong(
+                currentQuestion.question,
+                selectedPortal?.answerText || 'None',
+                correctPortal?.answerText || ''
+            );
             this.showWrongFeedback();
+            console.log(`❌ Wrong! Correct: ${correctPortal?.answerText}`);
+            
             // Highlight correct portal
-            if (correctPortal && !correctPortal.isCorrect) {
-                correctPortal.setCorrectHighlight();
-            }
+            correctPortal?.setCorrectHighlight();
         }
         
-        // Clear active set and prepare for next question
+        // Prepare for next question
         setTimeout(() => {
             this.activePortalSet = [];
             this.currentQuestionIndex++;
             this.waitingForNextQuestion = false;
             
             // Check if game is over
-            if (this.currentQuestionIndex >= this.demoQuestions.length) {
-                this.currentQuestionIndex = 0; // Loop for demo
-                console.log(`🎮 Game complete! Final score: ${this.score}/${this.demoQuestions.length}`);
-                this.score = 0; // Reset for demo
+            if (this.currentQuestionIndex >= this.questions.length) {
+                this.endGame();
             }
         }, 1500);
     }
 
+    private endGame(): void {
+        this.state = 'results';
+        
+        // Save score and show results
+        const gameScore = scoreManager.saveGame();
+        this.ui.showResults(gameScore);
+        
+        console.log(`🏁 Game complete! Final score: ${gameScore.score}/${gameScore.totalQuestions} (${gameScore.percentage}%)`);
+    }
+
     private showCorrectFeedback(): void {
-        // Green flash effect
-        const originalClearColor = this.scene.clearColor.clone();
-        this.scene.clearColor = new Color4(0.1, 0.4, 0.1, 1);
-        
-        setTimeout(() => {
-            this.scene.clearColor = originalClearColor;
-        }, 150);
-        
-        // Camera shake (subtle)
+        this.ui.showFeedbackFlash(true);
         this.cameraShake(0.1, 200);
     }
 
     private showWrongFeedback(): void {
-        // Red flash effect
-        const originalClearColor = this.scene.clearColor.clone();
-        this.scene.clearColor = new Color4(0.4, 0.1, 0.1, 1);
-        
-        setTimeout(() => {
-            this.scene.clearColor = originalClearColor;
-        }, 150);
-        
-        // Camera shake (more intense)
+        this.ui.showFeedbackFlash(false);
         this.cameraShake(0.3, 300);
     }
 
@@ -258,62 +348,28 @@ export class Game {
 
     private checkSpawnPortals(): void {
         if (this.activePortalSet.length === 0 && !this.waitingForNextQuestion) {
-            this.spawnNextPortals();
+            if (this.currentQuestionIndex < this.questions.length) {
+                this.spawnNextPortals();
+            }
         }
     }
 
     private spawnNextPortals(): void {
-        const question = this.demoQuestions[this.currentQuestionIndex];
-        this.activePortalSet = this.portalManager.spawnPortalSet(question, this.nextPortalSpawnZ);
+        const question = this.questions[this.currentQuestionIndex];
+        
+        this.activePortalSet = this.portalManager.spawnPortalSet({
+            answers: question.answers,
+            correctIndex: question.correctIndex
+        }, this.nextPortalSpawnZ);
+        
         this.nextPortalSpawnZ += this.portalSpacing;
         
         // Show question in UI
-        this.showQuestion(question.question);
-        console.log(`📝 Question: ${question.question}`);
-    }
-
-    private createQuestionUI(): void {
-        // Create question display overlay
-        this.questionDisplay = document.createElement('div');
-        this.questionDisplay.id = 'questionDisplay';
-        this.questionDisplay.style.cssText = `
-            position: fixed;
-            top: 40px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(15, 10, 35, 0.9);
-            border: 2px solid rgba(100, 150, 255, 0.5);
-            border-radius: 12px;
-            padding: 15px 30px;
-            color: white;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            font-size: 22px;
-            font-weight: bold;
-            text-align: center;
-            z-index: 1000;
-            box-shadow: 0 4px 20px rgba(0, 100, 255, 0.3);
-            min-width: 300px;
-            max-width: 80%;
-        `;
-        document.body.appendChild(this.questionDisplay);
-    }
-
-    private showQuestion(text: string): void {
-        if (this.questionDisplay) {
-            this.questionDisplay.textContent = text;
-            this.questionDisplay.style.opacity = '1';
-        }
-    }
-
-    public getScore(): number {
-        return this.score;
+        this.ui.showQuestion(question.question);
+        console.log(`📝 Q${this.currentQuestionIndex + 1}: ${question.question}`);
     }
 
     public getState(): GameState {
         return this.state;
-    }
-
-    public setState(state: GameState): void {
-        this.state = state;
     }
 }

@@ -15,8 +15,7 @@ import {
     MeshBuilder,
     PBRMaterial,
     Color3,
-    TransformNode,
-    Quaternion
+    TransformNode
 } from '@babylonjs/core';
 import '@babylonjs/loaders/glTF';
 
@@ -381,6 +380,14 @@ export class Player {
         this.lanePositions = positions;
         // Update current position to match new lane width
         this.rootNode.position.x = this.lanePositions[this.currentLane];
+    }
+
+    public resetPosition(): void {
+        // Reset to center lane
+        this.currentLane = 1;
+        this.rootNode.position.x = this.lanePositions[this.currentLane];
+        this.rootNode.position.z = 5; // Player Z position
+        this.isMoving = false;
     }
 
     public dispose(): void {
