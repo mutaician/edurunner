@@ -331,7 +331,7 @@ export class PortalManager {
         this.lanePositions = lanePositions;
     }
 
-    public spawnPortalSet(question: { answers: string[], correctIndex: number }, zPosition: number): Portal[] {
+    public spawnPortalSet(question: { answers: string[], correctIndex: number }, zPosition: number): { portals: Portal[], displayAnswers: string[] } {
         // Shuffle answers to random lanes while tracking correct index
         const shuffled = this.shuffleAnswers(question.answers, question.correctIndex);
         
@@ -349,7 +349,9 @@ export class PortalManager {
         }
         
         this.activePortals.push(...portals);
-        return portals;
+        
+        // Return both portals and the shuffled answers (in lane order: Left, Center, Right)
+        return { portals, displayAnswers: shuffled.answers };
     }
 
     private shuffleAnswers(answers: string[], correctIndex: number): { answers: string[], correctLane: number } {

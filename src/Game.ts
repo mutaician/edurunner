@@ -34,10 +34,10 @@ export class Game {
     // Game settings
     private currentTopic: string = '';
     private currentDifficulty: string = 'medium';
-    private readonly questionsPerGame: number = 10;
+    private questionsPerGame: number = 10;
     
-    private nextPortalSpawnZ: number = 40;
-    private readonly portalSpacing: number = 35;
+    private nextPortalSpawnZ: number = 70; // Spawn first portal further ahead for reading time
+    private readonly portalSpacing: number = 45; // Consistent spacing between portals
     private activePortalSet: Portal[] = [];
     private waitingForNextQuestion: boolean = false;
 
@@ -76,7 +76,7 @@ export class Game {
         
         // Create UI Manager with callbacks
         this.ui = new UIManager({
-            onStartGame: (topic, difficulty) => this.startGame(topic, difficulty),
+            onStartGame: (topic, difficulty, questionCount) => this.startGame(topic, difficulty, questionCount),
             onResumeGame: () => this.togglePause(),
             onRestartGame: () => this.restartGame(),
             onBackToMenu: () => this.backToMenu(),
@@ -99,29 +99,16 @@ export class Game {
             this.engine.resize();
         });
         
-        // Setup pause key
-        this.setupPauseControl();
-
+        // Setup pause key handled by UIManager
         // Debug info
-        console.log('🎮 EduRunner initialized!');
+        console.log('EduRunner initialized!');
         console.log('Controls: Arrow keys or A/D to move, ESC to pause');
     }
 
-    private setupPauseControl(): void {
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                if (this.state === 'playing') {
-                    this.togglePause();
-                } else if (this.state === 'paused') {
-                    this.togglePause();
-                }
-            }
-        });
-    }
-
-    private async startGame(topic: string, difficulty: string): Promise<void> {
+    private async startGame(topic: string, difficulty: string, questionCount: number = 10): Promise<void> {
         this.currentTopic = topic;
         this.currentDifficulty = difficulty;
+        this.questionsPerGame = questionCount;
         
         // Show loading screen
         this.ui.showScreen('loading');
@@ -134,7 +121,7 @@ export class Game {
                 count: this.questionsPerGame
             });
             
-            console.log(`📚 Loaded ${this.questions.length} questions on "${topic}"`);
+            console.log(`Loaded ${this.questions.length} questions on "${topic}"`);
             
             // Initialize game state
             this.resetGameState();
@@ -157,7 +144,7 @@ export class Game {
 
     private resetGameState(): void {
         this.currentQuestionIndex = 0;
-        this.nextPortalSpawnZ = 40;
+        this.nextPortalSpawnZ = 70; // Give player time to read first question
         this.waitingForNextQuestion = false;
         
         // Clear any existing portals
@@ -166,17 +153,20 @@ export class Game {
         
         // Reset player position
         this.player.resetPosition();
+        
+        // Clear chat history for new game
+        this.ui.clearChatHistory();
     }
 
     private togglePause(): void {
         if (this.state === 'playing') {
             this.state = 'paused';
             this.ui.showScreen('paused');
-            console.log('⏸️ Game paused');
+            console.log('Game paused');
         } else if (this.state === 'paused') {
             this.state = 'playing';
             this.ui.showScreen('game');
-            console.log('▶️ Game resumed');
+            console.log('Game resumed');
         }
     }
 
@@ -275,7 +265,7 @@ export class Game {
         if (selectedPortal?.isCorrect) {
             scoreManager.addCorrect();
             this.showCorrectFeedback();
-            console.log(`✅ Correct! Score: ${scoreManager.getScore()}`);
+            console.log(`Correct! Score: ${scoreManager.getScore()}`);
         } else {
             scoreManager.addWrong(
                 currentQuestion.question,
@@ -283,7 +273,7 @@ export class Game {
                 correctPortal?.answerText || ''
             );
             this.showWrongFeedback();
-            console.log(`❌ Wrong! Correct: ${correctPortal?.answerText}`);
+            console.log(`Wrong! Correct: ${correctPortal?.answerText}`);
             
             // Highlight correct portal
             correctPortal?.setCorrectHighlight();
@@ -307,9 +297,18 @@ export class Game {
         
         // Save score and show results
         const gameScore = scoreManager.saveGame();
+        
+        // Set chat context with quiz data for AI tutor
+        this.ui.setChatContext({
+            topic: this.currentTopic,
+            difficulty: this.currentDifficulty,
+            questions: this.questions,
+            wrongAnswers: gameScore.wrongAnswers
+        });
+        
         this.ui.showResults(gameScore);
         
-        console.log(`🏁 Game complete! Final score: ${gameScore.score}/${gameScore.totalQuestions} (${gameScore.percentage}%)`);
+        console.log(`Game complete! Final score: ${gameScore.score}/${gameScore.totalQuestions} (${gameScore.percentage}%)`);
     }
 
     private showCorrectFeedback(): void {
@@ -357,16 +356,18 @@ export class Game {
     private spawnNextPortals(): void {
         const question = this.questions[this.currentQuestionIndex];
         
-        this.activePortalSet = this.portalManager.spawnPortalSet({
+        // Spawn portals and get shuffled answers (in lane order: Left, Center, Right)
+        const { portals, displayAnswers } = this.portalManager.spawnPortalSet({
             answers: question.answers,
             correctIndex: question.correctIndex
         }, this.nextPortalSpawnZ);
         
+        this.activePortalSet = portals;
         this.nextPortalSpawnZ += this.portalSpacing;
         
-        // Show question in UI
-        this.ui.showQuestion(question.question);
-        console.log(`📝 Q${this.currentQuestionIndex + 1}: ${question.question}`);
+        // Show question with answers matching portal positions (A=Left, B=Center, C=Right)
+        this.ui.showQuestion(question.question, displayAnswers);
+        console.log(`Q${this.currentQuestionIndex + 1}: ${question.question}`);
     }
 
     public getState(): GameState {

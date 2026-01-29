@@ -31,7 +31,6 @@ export class Player {
     private trailMesh: TrailMesh | null = null;
     private footParticles: ParticleSystem | null = null;
     private glowOrb: Mesh;
-    private isLoaded: boolean = false;
 
     // Callbacks
     public onLaneChange: ((lane: number) => void) | null = null;
@@ -130,16 +129,14 @@ export class Player {
             // Add subtle bounce while running
             this.addRunningBounce();
             
-            this.isLoaded = true;
-            console.log('✅ Player model loaded successfully');
+            console.log('Player model loaded successfully');
             
             // Hide the fallback capsule
             this.glowOrb.isVisible = false;
             
         } catch (error) {
-            console.error('❌ Failed to load player model, using fallback shape:', error);
+            console.error('Failed to load player model, using fallback shape:', error);
             // Keep the capsule visible as fallback - it's already visible
-            this.isLoaded = true;
         }
     }
 

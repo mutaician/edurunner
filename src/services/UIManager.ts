@@ -3,11 +3,13 @@
 import { questionService } from './QuestionService';
 import { scoreManager, ScoreManager } from './ScoreManager';
 import type { GameScore } from './ScoreManager';
+import { chatService } from './ChatService';
+import type { QuizContext } from './ChatService';
 
 export type UIScreen = 'menu' | 'loading' | 'game' | 'paused' | 'results';
 
 export interface UICallbacks {
-    onStartGame: (topic: string, difficulty: string) => void;
+    onStartGame: (topic: string, difficulty: string, questionCount: number) => void;
     onResumeGame: () => void;
     onRestartGame: () => void;
     onBackToMenu: () => void;
@@ -26,10 +28,14 @@ export class UIManager {
     private hudElement: HTMLDivElement | null = null;
     private questionDisplay: HTMLDivElement | null = null;
     private pauseButton: HTMLButtonElement | null = null;
+    private chatPanel: HTMLDivElement | null = null;
     
     // Current selection
-    private selectedTopic: string = 'Mathematics';
+    private selectedTopic: string = 'Programming';
     private selectedDifficulty: string = 'medium';
+    private questionCount: number = 10;
+    private customTopic: string = '';
+    private useCustomTopic: boolean = false;
 
     constructor(callbacks: UICallbacks) {
         this.callbacks = callbacks;
@@ -56,6 +62,7 @@ export class UIManager {
         this.createResultsScreen();
         this.createHUD();
         this.createQuestionDisplay();
+        this.createChatPanel();
         
         // Setup keyboard shortcuts
         this.setupKeyboardShortcuts();
@@ -72,26 +79,33 @@ export class UIManager {
         const topics = questionService.getAvailableTopics();
         
         this.menuScreen.innerHTML = `
-            <div style="max-width: 500px; width: 90%; text-align: center;">
+            <div style="max-width: 550px; width: 90%; text-align: center; max-height: 90vh; overflow-y: auto;">
                 <h1 style="font-size: 48px; margin-bottom: 10px; color: #fff; text-shadow: 0 0 20px rgba(100, 200, 255, 0.8);">
                     🎮 EduRunner
                 </h1>
-                <p style="color: #aaa; margin-bottom: 30px; font-size: 16px;">
+                <p style="color: #aaa; margin-bottom: 25px; font-size: 16px;">
                     Learn while you run! Choose a topic and test your knowledge.
                 </p>
                 
-                <div style="margin-bottom: 25px;">
+                <div style="margin-bottom: 20px;">
                     <label style="display: block; margin-bottom: 10px; color: #ccc; font-size: 14px;">SELECT TOPIC</label>
-                    <div id="topic-buttons" style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
+                    <div id="topic-buttons" style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 12px;">
                         ${topics.map(topic => `
-                            <button class="topic-btn" data-topic="${topic}" style="${this.getTopicButtonStyle(topic === this.selectedTopic)}">
+                            <button class="topic-btn" data-topic="${topic}" style="${this.getTopicButtonStyle(topic === this.selectedTopic && !this.useCustomTopic)}">
                                 ${topic}
                             </button>
                         `).join('')}
                     </div>
+                    <div style="display: flex; align-items: center; gap: 10px; justify-content: center;">
+                        <span style="color: #888; font-size: 13px;">or enter your own:</span>
+                        <input type="text" id="custom-topic" placeholder="e.g., Space Exploration" 
+                            style="padding: 8px 12px; border: 2px solid rgba(100, 200, 255, 0.3); background: rgba(0,0,0,0.4); 
+                            color: #fff; border-radius: 8px; font-size: 14px; width: 180px; outline: none;"
+                            value="${this.customTopic}">
+                    </div>
                 </div>
                 
-                <div style="margin-bottom: 25px;">
+                <div style="margin-bottom: 20px;">
                     <label style="display: block; margin-bottom: 10px; color: #ccc; font-size: 14px;">DIFFICULTY</label>
                     <div id="difficulty-buttons" style="display: flex; gap: 10px; justify-content: center;">
                         <button class="diff-btn" data-diff="easy" style="${this.getDifficultyButtonStyle('easy', 'easy' === this.selectedDifficulty)}">Easy</button>
@@ -100,15 +114,23 @@ export class UIManager {
                     </div>
                 </div>
                 
+                <div style="margin-bottom: 25px;">
+                    <label style="display: block; margin-bottom: 10px; color: #ccc; font-size: 14px;">
+                        NUMBER OF QUESTIONS: <span id="question-count-display" style="color: #64c8ff; font-weight: bold;">${this.questionCount}</span>
+                    </label>
+                    <input type="range" id="question-count" min="5" max="50" value="${this.questionCount}" 
+                        style="width: 200px; cursor: pointer;">
+                </div>
+                
                 <button id="start-btn" style="${this.getStartButtonStyle()}">
                     ▶ START GAME
                 </button>
                 
-                <div id="stats-preview" style="margin-top: 30px; padding: 15px; background: rgba(0,0,0,0.3); border-radius: 10px;">
+                <div id="stats-preview" style="margin-top: 25px; padding: 15px; background: rgba(0,0,0,0.3); border-radius: 10px;">
                     ${this.getStatsPreviewHTML()}
                 </div>
                 
-                <p style="color: #666; font-size: 12px; margin-top: 20px;">
+                <p style="color: #666; font-size: 12px; margin-top: 15px;">
                     Controls: A/D or Arrow keys • ESC to pause
                 </p>
             </div>
@@ -130,9 +152,31 @@ export class UIManager {
             btn.addEventListener('click', (e) => {
                 const topic = (e.target as HTMLElement).dataset.topic!;
                 this.selectedTopic = topic;
+                this.useCustomTopic = false;
                 this.updateTopicButtons();
+                // Clear custom topic input
+                const customInput = this.menuScreen?.querySelector('#custom-topic') as HTMLInputElement;
+                if (customInput) customInput.value = '';
+                this.customTopic = '';
             });
         });
+        
+        // Custom topic input
+        const customTopicInput = this.menuScreen.querySelector('#custom-topic') as HTMLInputElement;
+        if (customTopicInput) {
+            customTopicInput.style.pointerEvents = 'auto';
+            customTopicInput.addEventListener('input', (e) => {
+                this.customTopic = (e.target as HTMLInputElement).value;
+                this.useCustomTopic = this.customTopic.trim().length > 0;
+                this.updateTopicButtons();
+            });
+            customTopicInput.addEventListener('focus', () => {
+                if (this.customTopic.trim().length > 0) {
+                    this.useCustomTopic = true;
+                    this.updateTopicButtons();
+                }
+            });
+        }
         
         // Difficulty buttons
         const diffBtns = this.menuScreen.querySelectorAll('.diff-btn');
@@ -145,11 +189,25 @@ export class UIManager {
             });
         });
         
+        // Question count slider
+        const questionSlider = this.menuScreen.querySelector('#question-count') as HTMLInputElement;
+        const questionDisplay = this.menuScreen.querySelector('#question-count-display');
+        if (questionSlider) {
+            questionSlider.style.pointerEvents = 'auto';
+            questionSlider.addEventListener('input', (e) => {
+                this.questionCount = parseInt((e.target as HTMLInputElement).value);
+                if (questionDisplay) questionDisplay.textContent = this.questionCount.toString();
+            });
+        }
+        
         // Start button
         const startBtn = this.menuScreen.querySelector('#start-btn') as HTMLButtonElement;
         startBtn.style.pointerEvents = 'auto';
         startBtn.addEventListener('click', () => {
-            this.callbacks.onStartGame(this.selectedTopic, this.selectedDifficulty);
+            const topic = this.useCustomTopic && this.customTopic.trim() 
+                ? this.customTopic.trim() 
+                : this.selectedTopic;
+            this.callbacks.onStartGame(topic, this.selectedDifficulty, this.questionCount);
         });
     }
 
@@ -158,9 +216,18 @@ export class UIManager {
         const btns = this.menuScreen.querySelectorAll('.topic-btn');
         btns.forEach(btn => {
             const topic = (btn as HTMLElement).dataset.topic!;
-            (btn as HTMLElement).style.cssText = this.getTopicButtonStyle(topic === this.selectedTopic);
+            const isSelected = topic === this.selectedTopic && !this.useCustomTopic;
+            (btn as HTMLElement).style.cssText = this.getTopicButtonStyle(isSelected);
             (btn as HTMLElement).style.pointerEvents = 'auto';
         });
+        
+        // Update custom input border if active
+        const customInput = this.menuScreen.querySelector('#custom-topic') as HTMLInputElement;
+        if (customInput) {
+            customInput.style.borderColor = this.useCustomTopic 
+                ? '#64c8ff' 
+                : 'rgba(100, 200, 255, 0.3)';
+        }
     }
 
     private updateDifficultyButtons(): void {
@@ -251,7 +318,9 @@ export class UIManager {
         if (!this.resultsScreen) return;
         
         const message = ScoreManager.getPerformanceMessage(gameScore.percentage);
-        const wrongAnswersHTML = gameScore.wrongAnswers.length > 0 
+        const hasWrongAnswers = gameScore.wrongAnswers.length > 0;
+        
+        const wrongAnswersHTML = hasWrongAnswers 
             ? `
                 <div style="margin-top: 20px; text-align: left; max-height: 200px; overflow-y: auto;">
                     <h3 style="color: #f44336; margin-bottom: 10px;">Review Mistakes:</h3>
@@ -284,7 +353,13 @@ export class UIManager {
                 
                 ${wrongAnswersHTML}
                 
-                <div style="margin-top: 25px; display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                ${hasWrongAnswers ? `
+                    <button id="chat-tutor-btn" style="${this.getMenuButtonStyle('#9C27B0')}">
+                        💬 Ask AI Tutor About Mistakes
+                    </button>
+                ` : ''}
+                
+                <div style="margin-top: 15px; display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
                     <button id="playagain-btn" style="${this.getMenuButtonStyle('#4CAF50')}">
                         🔄 Play Again
                     </button>
@@ -298,11 +373,23 @@ export class UIManager {
         // Setup listeners
         const playAgainBtn = this.resultsScreen.querySelector('#playagain-btn') as HTMLButtonElement;
         const newGameBtn = this.resultsScreen.querySelector('#newgame-btn') as HTMLButtonElement;
+        const chatTutorBtn = this.resultsScreen.querySelector('#chat-tutor-btn') as HTMLButtonElement;
         
         [playAgainBtn, newGameBtn].forEach(btn => btn.style.pointerEvents = 'auto');
         
         playAgainBtn.addEventListener('click', () => this.callbacks.onRestartGame());
         newGameBtn.addEventListener('click', () => this.callbacks.onBackToMenu());
+        
+        if (chatTutorBtn) {
+            chatTutorBtn.style.pointerEvents = 'auto';
+            chatTutorBtn.addEventListener('click', () => {
+                this.openChat();
+                // Auto-send initial message about wrong answers
+                const wrongCount = gameScore.wrongAnswers.length;
+                const firstWrong = gameScore.wrongAnswers[0];
+                this.sendChatMessage(`I got ${wrongCount} question${wrongCount > 1 ? 's' : ''} wrong. Can you help me understand why "${firstWrong.correctAnswer}" is the correct answer for: "${firstWrong.question}"?`);
+            });
+        }
         
         this.showScreen('results');
     }
@@ -384,9 +471,23 @@ export class UIManager {
         if (scoreTotal) scoreTotal.textContent = total.toString();
     }
 
-    showQuestion(text: string): void {
+    showQuestion(text: string, answers?: string[]): void {
         if (this.questionDisplay) {
-            this.questionDisplay.textContent = text;
+            // Build question HTML with answer options if provided
+            let html = `<div style="margin-bottom: ${answers ? '10px' : '0'}">${text}</div>`;
+            
+            if (answers && answers.length > 0) {
+                // Labels match portal positions: Left (A), Center (B), Right (C)
+                const labels = ['A', 'B', 'C'];
+                html += `<div style="display: flex; justify-content: center; gap: 15px; font-size: 13px; font-weight: normal; color: #aaa; margin-top: 8px; flex-wrap: wrap;">`;
+                answers.forEach((answer, i) => {
+                    const label = labels[i] || `${i + 1}`;
+                    html += `<span style="background: rgba(100, 200, 255, 0.15); padding: 4px 8px; border-radius: 6px;"><span style="color: #64c8ff; font-weight: bold;">${label}:</span> ${answer}</span>`;
+                });
+                html += `</div>`;
+            }
+            
+            this.questionDisplay.innerHTML = html;
             this.questionDisplay.style.display = 'block';
         }
     }
@@ -443,9 +544,10 @@ export class UIManager {
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 if (this.currentScreen === 'game') {
-                    this.showScreen('paused');
-                    this.callbacks.onResumeGame(); // This is actually pause - name is confusing, Game.ts handles toggle
+                    // Pause the game
+                    this.callbacks.onResumeGame(); // This triggers togglePause in Game.ts
                 } else if (this.currentScreen === 'paused') {
+                    // Resume the game
                     this.callbacks.onResumeGame();
                 }
             }
@@ -592,5 +694,191 @@ export class UIManager {
         }
         
         setTimeout(() => flash.remove(), 300);
+    }
+
+    // ============ CHAT PANEL ============
+    
+    private createChatPanel(): void {
+        this.chatPanel = document.createElement('div');
+        this.chatPanel.id = 'chat-panel';
+        this.chatPanel.style.cssText = `
+            position: fixed;
+            top: 0;
+            right: -400px;
+            width: 400px;
+            height: 100%;
+            background: rgba(10, 10, 25, 0.98);
+            border-left: 2px solid rgba(100, 200, 255, 0.3);
+            display: flex;
+            flex-direction: column;
+            z-index: 1001;
+            transition: right 0.3s ease;
+            pointer-events: auto;
+        `;
+        
+        this.chatPanel.innerHTML = `
+            <div style="padding: 15px; border-bottom: 1px solid rgba(100, 200, 255, 0.2); display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0; color: #fff; font-size: 18px;">💬 AI Tutor</h3>
+                <button id="close-chat" style="background: none; border: none; color: #aaa; font-size: 24px; cursor: pointer; padding: 5px;">&times;</button>
+            </div>
+            
+            <div id="chat-messages" style="flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 12px;">
+                <div class="chat-message assistant" style="background: rgba(100, 200, 255, 0.1); padding: 12px; border-radius: 12px; color: #ddd; font-size: 14px; line-height: 1.5;">
+                    Hi! I'm your AI tutor. Ask me anything about the questions you got wrong, or any concept you'd like to understand better! 🎓
+                </div>
+            </div>
+            
+            <div id="chat-suggestions" style="padding: 10px 15px; border-top: 1px solid rgba(100, 200, 255, 0.1); display: flex; flex-wrap: wrap; gap: 8px;">
+            </div>
+            
+            <div style="padding: 15px; border-top: 1px solid rgba(100, 200, 255, 0.2); display: flex; gap: 10px;">
+                <input type="text" id="chat-input" placeholder="Ask a question..." 
+                    style="flex: 1; padding: 12px; border: 2px solid rgba(100, 200, 255, 0.3); background: rgba(0,0,0,0.3); 
+                    color: #fff; border-radius: 8px; font-size: 14px; outline: none;">
+                <button id="chat-send" style="padding: 12px 20px; background: #9C27B0; border: none; border-radius: 8px; 
+                    color: white; font-size: 14px; cursor: pointer; font-weight: bold;">Send</button>
+            </div>
+        `;
+        
+        document.body.appendChild(this.chatPanel);
+        this.setupChatListeners();
+    }
+    
+    private setupChatListeners(): void {
+        if (!this.chatPanel) return;
+        
+        const closeBtn = this.chatPanel.querySelector('#close-chat') as HTMLButtonElement;
+        const input = this.chatPanel.querySelector('#chat-input') as HTMLInputElement;
+        const sendBtn = this.chatPanel.querySelector('#chat-send') as HTMLButtonElement;
+        
+        closeBtn.addEventListener('click', () => this.closeChat());
+        
+        sendBtn.addEventListener('click', () => {
+            const message = input.value.trim();
+            if (message) {
+                this.sendChatMessage(message);
+                input.value = '';
+            }
+        });
+        
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const message = input.value.trim();
+                if (message) {
+                    this.sendChatMessage(message);
+                    input.value = '';
+                }
+            }
+        });
+    }
+    
+    openChat(): void {
+        if (this.chatPanel) {
+            this.chatPanel.style.right = '0';
+            this.updateSuggestions();
+        }
+    }
+    
+    closeChat(): void {
+        if (this.chatPanel) {
+            this.chatPanel.style.right = '-400px';
+        }
+    }
+    
+    private updateSuggestions(): void {
+        const suggestionsContainer = this.chatPanel?.querySelector('#chat-suggestions');
+        if (!suggestionsContainer) return;
+        
+        const suggestions = chatService.getSuggestedQuestions();
+        suggestionsContainer.innerHTML = suggestions.map(s => `
+            <button class="suggestion-btn" style="padding: 6px 12px; background: rgba(156, 39, 176, 0.2); 
+                border: 1px solid rgba(156, 39, 176, 0.4); border-radius: 15px; color: #ce93d8; 
+                font-size: 12px; cursor: pointer; transition: all 0.2s;">
+                ${s}
+            </button>
+        `).join('');
+        
+        // Add click listeners
+        suggestionsContainer.querySelectorAll('.suggestion-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.sendChatMessage(btn.textContent?.trim() || '');
+            });
+        });
+    }
+    
+    private sendChatMessage(message: string): void {
+        const messagesContainer = this.chatPanel?.querySelector('#chat-messages');
+        const sendBtn = this.chatPanel?.querySelector('#chat-send') as HTMLButtonElement;
+        const input = this.chatPanel?.querySelector('#chat-input') as HTMLInputElement;
+        
+        if (!messagesContainer) return;
+        
+        // Add user message
+        const userDiv = document.createElement('div');
+        userDiv.className = 'chat-message user';
+        userDiv.style.cssText = 'background: rgba(156, 39, 176, 0.2); padding: 12px; border-radius: 12px; color: #fff; font-size: 14px; align-self: flex-end; max-width: 85%;';
+        userDiv.textContent = message;
+        messagesContainer.appendChild(userDiv);
+        
+        // Add assistant message placeholder
+        const assistantDiv = document.createElement('div');
+        assistantDiv.className = 'chat-message assistant';
+        assistantDiv.style.cssText = 'background: rgba(100, 200, 255, 0.1); padding: 12px; border-radius: 12px; color: #ddd; font-size: 14px; line-height: 1.5;';
+        assistantDiv.innerHTML = '<span class="typing-indicator" style="color: #888;">Thinking...</span>';
+        messagesContainer.appendChild(assistantDiv);
+        
+        // Scroll to bottom
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        
+        // Disable input while streaming
+        if (sendBtn) sendBtn.disabled = true;
+        if (input) input.disabled = true;
+        
+        // Send to AI
+        chatService.sendMessage(
+            message,
+            // onChunk
+            (content) => {
+                const indicator = assistantDiv.querySelector('.typing-indicator');
+                if (indicator) {
+                    assistantDiv.innerHTML = '';
+                }
+                assistantDiv.innerHTML += content.replace(/\n/g, '<br>');
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            },
+            // onComplete
+            () => {
+                if (sendBtn) sendBtn.disabled = false;
+                if (input) input.disabled = false;
+                input?.focus();
+                this.updateSuggestions();
+            },
+            // onError
+            (error) => {
+                assistantDiv.innerHTML = `<span style="color: #f44336;">Error: ${error}</span>`;
+                if (sendBtn) sendBtn.disabled = false;
+                if (input) input.disabled = false;
+            }
+        );
+    }
+    
+    // Set chat context from game
+    setChatContext(context: QuizContext): void {
+        chatService.setQuizContext(context);
+    }
+    
+    // Clear chat history (for new game)
+    clearChatHistory(): void {
+        chatService.clearHistory();
+        
+        // Reset chat messages UI
+        const messagesContainer = this.chatPanel?.querySelector('#chat-messages');
+        if (messagesContainer) {
+            messagesContainer.innerHTML = `
+                <div class="chat-message assistant" style="background: rgba(100, 200, 255, 0.1); padding: 12px; border-radius: 12px; color: #ddd; font-size: 14px; line-height: 1.5;">
+                    Hi! I'm your AI tutor. Ask me anything about the questions you got wrong, or any concept you'd like to understand better! 🎓
+                </div>
+            `;
+        }
     }
 }

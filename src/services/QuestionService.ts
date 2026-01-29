@@ -13,7 +13,8 @@ export interface QuestionRequest {
 }
 
 // Worker URL - update this after deploying your Cloudflare Worker
-const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://edurunner-api.workers.dev';
+// const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://edurunner-api.workers.dev';
+const WORKER_URL = "http://localhost:8787"
 
 // Fallback questions for when API is unavailable (demo/offline mode)
 const FALLBACK_QUESTIONS: Record<string, Question[]> = {
@@ -53,18 +54,6 @@ const FALLBACK_QUESTIONS: Record<string, Question[]> = {
         { question: "What country has the most people?", answers: ["India", "China", "USA"], correctIndex: 0 },
         { question: "Sahara Desert is in which continent?", answers: ["Asia", "Africa", "Australia"], correctIndex: 1 },
     ],
-    history: [
-        { question: "Who painted the Mona Lisa?", answers: ["Picasso", "Da Vinci", "Van Gogh"], correctIndex: 1 },
-        { question: "When did WW2 end?", answers: ["1944", "1945", "1946"], correctIndex: 1 },
-        { question: "First President of USA?", answers: ["Lincoln", "Washington", "Jefferson"], correctIndex: 1 },
-        { question: "Ancient wonder in Egypt?", answers: ["Colosseum", "Pyramids", "Parthenon"], correctIndex: 1 },
-        { question: "Who discovered America?", answers: ["Magellan", "Columbus", "Vespucci"], correctIndex: 1 },
-        { question: "Berlin Wall fell in?", answers: ["1987", "1989", "1991"], correctIndex: 1 },
-        { question: "First man on the Moon?", answers: ["Aldrin", "Armstrong", "Collins"], correctIndex: 1 },
-        { question: "Titanic sank in what year?", answers: ["1910", "1912", "1914"], correctIndex: 1 },
-        { question: "Who wrote Romeo and Juliet?", answers: ["Dickens", "Shakespeare", "Austen"], correctIndex: 1 },
-        { question: "Roman Empire capital?", answers: ["Athens", "Rome", "Sparta"], correctIndex: 1 },
-    ],
     programming: [
         { question: "What does HTML stand for?", answers: ["HyperText Markup Language", "High Tech Modern Language", "Home Tool Markup Language"], correctIndex: 0 },
         { question: "Which is not a programming language?", answers: ["Python", "HTML", "Java"], correctIndex: 1 },
@@ -101,7 +90,7 @@ export class QuestionService {
                 if (response.ok) {
                     const data = await response.json();
                     if (data.questions && Array.isArray(data.questions)) {
-                        console.log('✅ Questions loaded from API');
+                        console.log('Questions loaded from API');
                         return data.questions;
                     }
                 }
@@ -130,7 +119,7 @@ export class QuestionService {
             const topics = Object.keys(FALLBACK_QUESTIONS);
             const randomTopic = topics[Math.floor(Math.random() * topics.length)];
             questions = FALLBACK_QUESTIONS[randomTopic];
-            console.log(`📚 Using "${randomTopic}" questions (requested: "${request.topic}")`);
+            console.log(`Using "${randomTopic}" questions (requested: "${request.topic}")`);
         }
 
         // Shuffle and return requested count

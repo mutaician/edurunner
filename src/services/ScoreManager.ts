@@ -144,7 +144,7 @@ export class ScoreManager {
         // Save to localStorage
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(scores));
-            console.log('💾 Score saved to localStorage');
+            console.log('Score saved to localStorage');
         } catch (error) {
             console.error('Failed to save score:', error);
         }
@@ -232,7 +232,7 @@ export class ScoreManager {
     clearAllData(): void {
         try {
             localStorage.removeItem(STORAGE_KEY);
-            console.log('🗑️ All score data cleared');
+            console.log('All score data cleared');
         } catch (error) {
             console.error('Failed to clear data:', error);
         }
