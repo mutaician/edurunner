@@ -93,6 +93,20 @@ export class Game {
                 const isMuted = this.audioManager?.toggleMute() ?? false;
                 this.ui.updateMuteButton(isMuted);
             },
+            onSpeedUp: () => {
+                if (this.state === 'playing') {
+                    this.track.increaseSpeed();
+                    this.showSpeedIndicator();
+                    this.syncAnimationSpeed();
+                }
+            },
+            onSpeedDown: () => {
+                if (this.state === 'playing') {
+                    this.track.decreaseSpeed();
+                    this.showSpeedIndicator();
+                    this.syncAnimationSpeed();
+                }
+            },
         });
         
         // Connect score manager to UI

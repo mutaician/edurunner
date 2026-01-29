@@ -16,6 +16,8 @@ export interface UICallbacks {
     onMoveLeft?: () => void;
     onMoveRight?: () => void;
     onToggleMute?: () => void;
+    onSpeedUp?: () => void;
+    onSpeedDown?: () => void;
 }
 
 export class UIManager {
@@ -143,6 +145,12 @@ export class UIManager {
                 <p style="color: #666; font-size: 12px; margin-top: 15px;">
                     Controls: A/D or ←→ to move • ↑↓ to adjust speed • ESC to pause
                 </p>
+                
+                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(100, 200, 255, 0.2);">
+                    <p style="color: #555; font-size: 11px; margin: 0;">
+                        Built by <a href="https://github.com/mutaician" target="_blank" style="color: #64c8ff; text-decoration: none;">Cian</a> 🚀
+                    </p>
+                </div>
             </div>
         `;
         
@@ -404,11 +412,14 @@ export class UIManager {
         if (chatTutorBtn) {
             chatTutorBtn.style.pointerEvents = 'auto';
             chatTutorBtn.addEventListener('click', () => {
-                this.openChat();
-                // Auto-send initial message about wrong answers
-                const wrongCount = gameScore.wrongAnswers.length;
-                const firstWrong = gameScore.wrongAnswers[0];
-                this.sendChatMessage(`I got ${wrongCount} question${wrongCount > 1 ? 's' : ''} wrong. Can you help me understand why "${firstWrong.correctAnswer}" is the correct answer for: "${firstWrong.question}"?`);
+            this.openChat();
+            // Auto-send initial message about all wrong answers
+            const wrongCount = gameScore.wrongAnswers.length;
+            const questionsList = gameScore.wrongAnswers.map((wa, i) => 
+                `${i + 1}. Question: "${wa.question}"\n   Correct Answer: "${wa.correctAnswer}"`
+            ).join('\n\n');
+            
+            this.sendChatMessage(`I got ${wrongCount} question${wrongCount > 1 ? 's' : ''} wrong. Can you help me understand the correct answers for these?\n\n${questionsList}`);
             });
         }
         
@@ -540,9 +551,35 @@ export class UIManager {
             transition: all 0.15s;
         `;
         
+        const speedButtonStyle = `
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(15, 10, 35, 0.8);
+            border: 2px solid rgba(255, 200, 100, 0.5);
+            color: #ffc864;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            transition: all 0.15s;
+        `;
+        
         this.mobileControls.innerHTML = `
-            <button id="mobile-left" style="${buttonStyle}">◀</button>
-            <button id="mobile-right" style="${buttonStyle}">▶</button>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <button id="mobile-left" style="${buttonStyle}">◀</button>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px; align-items: center;">
+                <button id="mobile-speed-up" style="${speedButtonStyle}">▲</button>
+                <button id="mobile-speed-down" style="${speedButtonStyle}">▼</button>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <button id="mobile-right" style="${buttonStyle}">▶</button>
+            </div>
         `;
         
         this.mobileControls.style.display = 'none'; // Hidden by default
@@ -573,6 +610,23 @@ export class UIManager {
         rightBtn.addEventListener('click', () => {
             if (this.callbacks.onMoveRight) this.callbacks.onMoveRight();
         });
+        
+        // Speed controls
+        const speedUpBtn = this.mobileControls.querySelector('#mobile-speed-up') as HTMLButtonElement;
+        const speedDownBtn = this.mobileControls.querySelector('#mobile-speed-down') as HTMLButtonElement;
+        
+        if (speedUpBtn && speedDownBtn) {
+            addTouchFeedback(speedUpBtn);
+            addTouchFeedback(speedDownBtn);
+            
+            speedUpBtn.addEventListener('click', () => {
+                if (this.callbacks.onSpeedUp) this.callbacks.onSpeedUp();
+            });
+            
+            speedDownBtn.addEventListener('click', () => {
+                if (this.callbacks.onSpeedDown) this.callbacks.onSpeedDown();
+            });
+        }
     }
 
     updateScore(score: number, total: number): void {
