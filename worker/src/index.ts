@@ -129,7 +129,7 @@ Keep question text under 100 characters. Make the wrong answers plausible.`,
 	}
 }
 
-// Handler for AI tutor chat with streaming
+// Handler for AI tutor chat with streaming using Responses API
 async function handleChat(request: Request, env: Env): Promise<Response> {
 	try {
 		const body: ChatRequest = await request.json();
@@ -153,8 +153,8 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 			apiKey: env.OPENAI_API_KEY,
 		});
 
-		// Build context-aware system prompt
-		let systemPrompt = `You are a friendly, encouraging educational tutor helping a student learn through an educational runner game called EduRunner.
+		// Build context-aware instructions
+		let instructions = `You are a friendly, encouraging educational tutor helping a student learn through an educational runner game called EduRunner.
 
 Your role:
 - Explain concepts clearly and at the appropriate level
@@ -173,35 +173,36 @@ Teaching approach:
 
 		// Add quiz context if available
 		if (quizContext) {
-			systemPrompt += `\n\nCurrent Quiz Context:
+			instructions += `\n\nCurrent Quiz Context:
 - Topic: ${quizContext.topic}
 - Difficulty: ${quizContext.difficulty}
-- Questions attempted: ${quizContext.questions.length}`;
+- Questions attempted: ${quizContext.questions?.length || 0}`;
 
 			if (quizContext.wrongAnswers && quizContext.wrongAnswers.length > 0) {
-				systemPrompt += `\n\nQuestions they got wrong (use these to help explain):`;
-				quizContext.wrongAnswers.forEach((wa, i) => {
-					systemPrompt += `\n${i + 1}. Q: "${wa.question}"
+				instructions += `\n\nQuestions they got wrong (use these to help explain):`;
+				quizContext.wrongAnswers.slice(0, 10).forEach((wa, i) => {
+					instructions += `\n${i + 1}. Q: "${wa.question}"
    Their answer: "${wa.yourAnswer}" (incorrect)
    Correct answer: "${wa.correctAnswer}"`;
 				});
 			}
 		}
 
-		// Build messages array with conversation history
-		const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-			{ role: 'system', content: systemPrompt },
-			...conversationHistory.map(msg => ({
-				role: msg.role as 'user' | 'assistant',
-				content: msg.content
-			})),
-			{ role: 'user', content: message }
-		];
+		// Build conversation input from history
+		let conversationInput = '';
+		if (conversationHistory && conversationHistory.length > 0) {
+			conversationInput = conversationHistory.map(msg => 
+				`${msg.role === 'user' ? 'Student' : 'Tutor'}: ${msg.content}`
+			).join('\n\n');
+			conversationInput += '\n\n';
+		}
+		conversationInput += `Student: ${message}\n\nTutor:`;
 
-		// Create streaming response
-		const stream = await openai.chat.completions.create({
+		// Create streaming response using Responses API
+		const stream = await openai.responses.create({
 			model: 'gpt-5-mini',
-			messages,
+			instructions,
+			input: conversationInput,
 			stream: true,
 		});
 
@@ -210,11 +211,13 @@ Teaching approach:
 		const readable = new ReadableStream({
 			async start(controller) {
 				try {
-					for await (const chunk of stream) {
-						const content = chunk.choices[0]?.delta?.content;
-						if (content) {
-							// Send as Server-Sent Events format
-							controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+					for await (const event of stream) {
+						// Handle different event types from responses API
+						if (event.type === 'response.output_text.delta') {
+							const content = event.delta;
+							if (content) {
+								controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+							}
 						}
 					}
 					controller.enqueue(encoder.encode('data: [DONE]\n\n'));

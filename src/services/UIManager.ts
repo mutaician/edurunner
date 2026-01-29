@@ -126,12 +126,16 @@ export class UIManager {
                     ▶ START GAME
                 </button>
                 
+                <button id="chat-menu-btn" style="margin-top: 15px; padding: 12px 30px; background: rgba(156, 39, 176, 0.3); border: 2px solid rgba(156, 39, 176, 0.5); border-radius: 10px; color: #ce93d8; font-size: 16px; cursor: pointer; transition: all 0.2s;">
+                    💬 AI Tutor (Review Past Games)
+                </button>
+                
                 <div id="stats-preview" style="margin-top: 25px; padding: 15px; background: rgba(0,0,0,0.3); border-radius: 10px;">
                     ${this.getStatsPreviewHTML()}
                 </div>
                 
                 <p style="color: #666; font-size: 12px; margin-top: 15px;">
-                    Controls: A/D or Arrow keys • ESC to pause
+                    Controls: A/D or ←→ to move • ↑↓ to adjust speed • ESC to pause
                 </p>
             </div>
         `;
@@ -209,6 +213,17 @@ export class UIManager {
                 : this.selectedTopic;
             this.callbacks.onStartGame(topic, this.selectedDifficulty, this.questionCount);
         });
+        
+        // Chat tutor button from menu
+        const chatMenuBtn = this.menuScreen.querySelector('#chat-menu-btn') as HTMLButtonElement;
+        if (chatMenuBtn) {
+            chatMenuBtn.style.pointerEvents = 'auto';
+            chatMenuBtn.addEventListener('click', () => {
+                // Set context with past game history
+                this.setChatContextWithHistory();
+                this.openChat();
+            });
+        }
     }
 
     private updateTopicButtons(): void {
@@ -471,10 +486,10 @@ export class UIManager {
         if (scoreTotal) scoreTotal.textContent = total.toString();
     }
 
-    showQuestion(text: string, answers?: string[]): void {
+    showQuestion(id: number, text: string, answers?: string[]): void {
         if (this.questionDisplay) {
             // Build question HTML with answer options if provided
-            let html = `<div style="margin-bottom: ${answers ? '10px' : '0'}">${text}</div>`;
+            let html = `<div style="margin-bottom: ${answers ? '10px' : '0'}">${id + 1}. ${text}</div>`;
             
             if (answers && answers.length > 0) {
                 // Labels match portal positions: Left (A), Center (B), Right (C)
@@ -696,6 +711,58 @@ export class UIManager {
         setTimeout(() => flash.remove(), 300);
     }
 
+    // Show speed indicator when speed changes
+    private speedIndicatorTimeout: ReturnType<typeof setTimeout> | null = null;
+    
+    showSpeedIndicator(current: number, min: number, max: number): void {
+        // Remove existing indicator
+        const existing = document.querySelector('#speed-indicator');
+        if (existing) existing.remove();
+        
+        if (this.speedIndicatorTimeout) {
+            clearTimeout(this.speedIndicatorTimeout);
+        }
+        
+        const percentage = ((current - min) / (max - min)) * 100;
+        
+        const indicator = document.createElement('div');
+        indicator.id = 'speed-indicator';
+        indicator.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 10, 35, 0.9);
+            border: 2px solid rgba(100, 200, 255, 0.5);
+            border-radius: 10px;
+            padding: 10px 20px;
+            color: white;
+            font-size: 14px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            pointer-events: none;
+        `;
+        
+        indicator.innerHTML = `
+            <span style="color: #aaa;">Speed:</span>
+            <div style="width: 100px; height: 6px; background: rgba(255,255,255,0.2); border-radius: 3px; overflow: hidden;">
+                <div style="width: ${percentage}%; height: 100%; background: linear-gradient(90deg, #4CAF50, #FF9800, #f44336); border-radius: 3px;"></div>
+            </div>
+            <span style="color: #64c8ff; font-weight: bold;">${current.toFixed(0)}</span>
+        `;
+        
+        document.body.appendChild(indicator);
+        
+        // Auto-hide after 1.5 seconds
+        this.speedIndicatorTimeout = setTimeout(() => {
+            indicator.style.transition = 'opacity 0.3s';
+            indicator.style.opacity = '0';
+            setTimeout(() => indicator.remove(), 300);
+        }, 1500);
+    }
+
     // ============ CHAT PANEL ============
     
     private createChatPanel(): void {
@@ -724,11 +791,8 @@ export class UIManager {
             
             <div id="chat-messages" style="flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 12px;">
                 <div class="chat-message assistant" style="background: rgba(100, 200, 255, 0.1); padding: 12px; border-radius: 12px; color: #ddd; font-size: 14px; line-height: 1.5;">
-                    Hi! I'm your AI tutor. Ask me anything about the questions you got wrong, or any concept you'd like to understand better! 🎓
+                    Hi! I'm your AI tutor. Ask me anything about any topic, review past questions, or get help understanding concepts! 🎓
                 </div>
-            </div>
-            
-            <div id="chat-suggestions" style="padding: 10px 15px; border-top: 1px solid rgba(100, 200, 255, 0.1); display: flex; flex-wrap: wrap; gap: 8px;">
             </div>
             
             <div style="padding: 15px; border-top: 1px solid rgba(100, 200, 255, 0.2); display: flex; gap: 10px;">
@@ -775,7 +839,6 @@ export class UIManager {
     openChat(): void {
         if (this.chatPanel) {
             this.chatPanel.style.right = '0';
-            this.updateSuggestions();
         }
     }
     
@@ -783,27 +846,6 @@ export class UIManager {
         if (this.chatPanel) {
             this.chatPanel.style.right = '-400px';
         }
-    }
-    
-    private updateSuggestions(): void {
-        const suggestionsContainer = this.chatPanel?.querySelector('#chat-suggestions');
-        if (!suggestionsContainer) return;
-        
-        const suggestions = chatService.getSuggestedQuestions();
-        suggestionsContainer.innerHTML = suggestions.map(s => `
-            <button class="suggestion-btn" style="padding: 6px 12px; background: rgba(156, 39, 176, 0.2); 
-                border: 1px solid rgba(156, 39, 176, 0.4); border-radius: 15px; color: #ce93d8; 
-                font-size: 12px; cursor: pointer; transition: all 0.2s;">
-                ${s}
-            </button>
-        `).join('');
-        
-        // Add click listeners
-        suggestionsContainer.querySelectorAll('.suggestion-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                this.sendChatMessage(btn.textContent?.trim() || '');
-            });
-        });
     }
     
     private sendChatMessage(message: string): void {
@@ -851,7 +893,6 @@ export class UIManager {
                 if (sendBtn) sendBtn.disabled = false;
                 if (input) input.disabled = false;
                 input?.focus();
-                this.updateSuggestions();
             },
             // onError
             (error) => {
@@ -867,6 +908,33 @@ export class UIManager {
         chatService.setQuizContext(context);
     }
     
+    // Set chat context with past game history from localStorage
+    private setChatContextWithHistory(): void {
+        const stats = scoreManager.getPlayerStats();
+        const recentGames = stats.recentScores || [];
+        
+        // Build a context with past game history
+        const historyContext: QuizContext = {
+            topic: 'General Review',
+            difficulty: 'mixed',
+            questions: [],
+            wrongAnswers: []
+        };
+        
+        // Collect wrong answers from recent games
+        recentGames.forEach(game => {
+            game.wrongAnswers.forEach(wa => {
+                historyContext.wrongAnswers.push({
+                    question: `[${game.topic}] ${wa.question}`,
+                    yourAnswer: wa.yourAnswer,
+                    correctAnswer: wa.correctAnswer
+                });
+            });
+        });
+        
+        chatService.setQuizContext(historyContext);
+    }
+    
     // Clear chat history (for new game)
     clearChatHistory(): void {
         chatService.clearHistory();
@@ -876,7 +944,7 @@ export class UIManager {
         if (messagesContainer) {
             messagesContainer.innerHTML = `
                 <div class="chat-message assistant" style="background: rgba(100, 200, 255, 0.1); padding: 12px; border-radius: 12px; color: #ddd; font-size: 14px; line-height: 1.5;">
-                    Hi! I'm your AI tutor. Ask me anything about the questions you got wrong, or any concept you'd like to understand better! 🎓
+                    Hi! I'm your AI tutor. Ask me anything about any topic, review past questions, or get help understanding concepts! 🎓
                 </div>
             `;
         }

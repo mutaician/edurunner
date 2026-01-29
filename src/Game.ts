@@ -99,10 +99,38 @@ export class Game {
             this.engine.resize();
         });
         
-        // Setup pause key handled by UIManager
+        // Setup speed control
+        this.setupSpeedControl();
+        
         // Debug info
         console.log('EduRunner initialized!');
-        console.log('Controls: Arrow keys or A/D to move, ESC to pause');
+        console.log('Controls: A/D or ←→ to move, ↑↓ to adjust speed, ESC to pause');
+    }
+
+    private setupSpeedControl(): void {
+        window.addEventListener('keydown', (e) => {
+            if (this.state !== 'playing') return;
+            
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+                this.track.increaseSpeed();
+                this.showSpeedIndicator();
+                this.syncAnimationSpeed();
+            } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+                this.track.decreaseSpeed();
+                this.showSpeedIndicator();
+                this.syncAnimationSpeed();
+            }
+        });
+    }
+
+    private showSpeedIndicator(): void {
+        const limits = this.track.getSpeedLimits();
+        this.ui.showSpeedIndicator(limits.current, limits.min, limits.max);
+    }
+
+    private syncAnimationSpeed(): void {
+        const limits = this.track.getSpeedLimits();
+        this.player.setAnimationSpeed(limits.current, limits.min, limits.max);
     }
 
     private async startGame(topic: string, difficulty: string, questionCount: number = 10): Promise<void> {
@@ -355,6 +383,7 @@ export class Game {
 
     private spawnNextPortals(): void {
         const question = this.questions[this.currentQuestionIndex];
+        console.log("Testing Question: ", question)
         
         // Spawn portals and get shuffled answers (in lane order: Left, Center, Right)
         const { portals, displayAnswers } = this.portalManager.spawnPortalSet({
@@ -366,7 +395,7 @@ export class Game {
         this.nextPortalSpawnZ += this.portalSpacing;
         
         // Show question with answers matching portal positions (A=Left, B=Center, C=Right)
-        this.ui.showQuestion(question.question, displayAnswers);
+        this.ui.showQuestion(this.currentQuestionIndex ,question.question, displayAnswers);
         console.log(`Q${this.currentQuestionIndex + 1}: ${question.question}`);
     }
 

@@ -28,9 +28,13 @@ export class Player {
     private lanePositions: number[] = [-3, 0, 3];
     private isMoving: boolean = false;
     private animationGroups: AnimationGroup[] = [];
+    private runAnimation: AnimationGroup | null = null;
     private trailMesh: TrailMesh | null = null;
     private footParticles: ParticleSystem | null = null;
     private glowOrb: Mesh;
+    
+    // Animation speed settings
+    private currentAnimationSpeed: number = 1.0;
 
     // Callbacks
     public onLaneChange: ((lane: number) => void) | null = null;
@@ -95,39 +99,41 @@ export class Player {
             this.mesh = result.meshes[0] as Mesh;
             this.animationGroups = result.animationGroups;
             
-            // Configure mesh
-            this.mesh.parent = this.rootNode;
-            this.mesh.position = new Vector3(0, 0, 0);
+            // Create a wrapper TransformNode to handle rotation
+            // This is needed because animations override mesh rotation
+            const modelWrapper = new TransformNode("modelWrapper", this.scene);
+            modelWrapper.parent = this.rootNode;
             
-            // Scale appropriately - larger for visibility
-            this.mesh.scaling = new Vector3(1,1,1);
+            // Parent the root mesh to our wrapper
+            this.mesh.parent = modelWrapper;
             
-            // Rotate to face forward
-            this.mesh.rotationQuaternion = null;
-            this.mesh.rotation.y = Math.PI / 9;
+            // Apply tested values for hypercasual_stickman.glb
+            this.mesh.position.y = 0.80;
+            this.mesh.scaling = new Vector3(1.6, 1.6, 1.6);
             
-            // Ensure all child meshes are visible
+            // Clear quaternion rotation on all meshes
             result.meshes.forEach(m => {
+                m.rotationQuaternion = null;
                 m.isVisible = true;
                 m.visibility = 1;
             });
+            
+            // Apply rotation to wrapper (won't be overridden by animations)
+            modelWrapper.rotation.x = 0;
+            modelWrapper.rotation.y = 0.27;
+            modelWrapper.rotation.z = 0;
 
             // Play running animation if available
             if (this.animationGroups.length > 0) {
                 // Find running animation by name, or use first one
-                let runAnim = this.animationGroups.find(ag => 
+                this.runAnimation = this.animationGroups.find(ag => 
                     ag.name.toLowerCase().includes('run') || 
                     ag.name.toLowerCase().includes('walk')
-                );
-                if (!runAnim) {
-                    runAnim = this.animationGroups[0];
-                }
-                runAnim.play(true);
-                runAnim.speedRatio = 1.5; // Speed up animation
+                ) || this.animationGroups[0];
+                
+                this.runAnimation.play(true);
+                this.runAnimation.speedRatio = this.currentAnimationSpeed;
             }
-
-            // Add subtle bounce while running
-            this.addRunningBounce();
             
             console.log('Player model loaded successfully');
             
@@ -140,17 +146,26 @@ export class Player {
         }
     }
 
-    private addRunningBounce(): void {
-        let bounceTime = 0;
-        this.scene.onBeforeRenderObservable.add(() => {
-            if (this.mesh) {
-                bounceTime += 0.15;
-                // Subtle vertical bounce
-                this.mesh.position.y = Math.abs(Math.sin(bounceTime)) * 0.05;
-                // Subtle side-to-side sway
-                this.mesh.rotation.z = Math.sin(bounceTime * 0.5) * 0.02;
-            }
-        });
+    /**
+     * Set the animation speed based on track speed
+     * @param trackSpeed - The current track speed
+     * @param minSpeed - The minimum track speed
+     * @param maxSpeed - The maximum track speed
+     */
+    public setAnimationSpeed(trackSpeed: number, minSpeed: number, maxSpeed: number): void {
+        // Map track speed to animation speed
+        // At min speed (6), animation should be slower (0.8)
+        // At default speed (12), animation should be normal (1.0)
+        // At max speed (42), animation should be faster (2.5)
+        const speedRange = maxSpeed - minSpeed;
+        const normalizedSpeed = (trackSpeed - minSpeed) / speedRange;
+        
+        // Animation speed from 0.8 to 2.5
+        this.currentAnimationSpeed = 0.8 + (normalizedSpeed * 1.7);
+        
+        if (this.runAnimation) {
+            this.runAnimation.speedRatio = this.currentAnimationSpeed;
+        }
     }
 
     private createTrailEffect(): void {
@@ -292,38 +307,6 @@ export class Player {
                 this.onLaneChange(this.currentLane);
             }
         });
-
-        // Add a tilt during lane change
-        this.addLaneChangeTilt(targetX > this.rootNode.position.x ? 1 : -1);
-    }
-
-    private addLaneChangeTilt(direction: number): void {
-        if (!this.mesh) return;
-        
-        const tiltAnimation = new Animation(
-            "tilt",
-            "rotation.z",
-            60,
-            Animation.ANIMATIONTYPE_FLOAT,
-            Animation.ANIMATIONLOOPMODE_CONSTANT
-        );
-
-        const tiltAmount = direction * -0.2; // Tilt opposite to movement direction
-        
-        const keys = [
-            { frame: 0, value: 0 },
-            { frame: 5, value: tiltAmount },
-            { frame: 10, value: 0 }
-        ];
-
-        tiltAnimation.setKeys(keys);
-        
-        const easing = new QuadraticEase();
-        easing.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
-        tiltAnimation.setEasingFunction(easing);
-
-        this.mesh.animations = [tiltAnimation];
-        this.scene.beginAnimation(this.mesh, 0, 10, false);
     }
 
     private spawnLaneChangeParticles(direction: number): void {

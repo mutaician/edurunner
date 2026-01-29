@@ -22,7 +22,10 @@ export class Track {
     private readonly totalSegments: number = 20; // Plenty of segments for coverage
     private readonly trackWidth: number = 9;
     private readonly laneWidth: number = 3;
-    private speed: number = 12; // Slower, more comfortable speed
+    private speed: number = 12; // Default comfortable speed
+    private readonly minSpeed: number = 6; // Minimum speed
+    private readonly maxSpeed: number = 42; // Maximum speed
+    private readonly speedStep: number = 2; // Speed change per key press
     private scene: Scene;
     private glowLayer: GlowLayer;
     
@@ -211,7 +214,19 @@ export class Track {
     }
 
     public setSpeed(speed: number): void {
-        this.speed = speed;
+        this.speed = Math.max(this.minSpeed, Math.min(this.maxSpeed, speed));
+    }
+
+    public increaseSpeed(): void {
+        this.setSpeed(this.speed + this.speedStep);
+    }
+
+    public decreaseSpeed(): void {
+        this.setSpeed(this.speed - this.speedStep);
+    }
+
+    public getSpeedLimits(): { min: number; max: number; current: number } {
+        return { min: this.minSpeed, max: this.maxSpeed, current: this.speed };
     }
 
     public getLanePositions(): number[] {

@@ -179,33 +179,6 @@ export class ChatService {
             this.isStreaming = false;
         }
     }
-
-    /**
-     * Get suggested questions based on context
-     */
-    getSuggestedQuestions(): string[] {
-        const suggestions: string[] = [];
-
-        if (this.quizContext?.wrongAnswers && this.quizContext.wrongAnswers.length > 0) {
-            const lastWrong = this.quizContext.wrongAnswers[this.quizContext.wrongAnswers.length - 1];
-            suggestions.push(`Why is "${lastWrong.correctAnswer}" the correct answer?`);
-            suggestions.push(`Can you explain this concept more simply?`);
-        }
-
-        if (this.quizContext?.topic) {
-            suggestions.push(`What are the key concepts in ${this.quizContext.topic}?`);
-            suggestions.push(`Give me tips to remember this better`);
-        }
-
-        // Default suggestions
-        if (suggestions.length === 0) {
-            suggestions.push('Can you explain that differently?');
-            suggestions.push('Give me an example');
-            suggestions.push('Why is this important?');
-        }
-
-        return suggestions.slice(0, 3);
-    }
 }
 
 // Export singleton instance
