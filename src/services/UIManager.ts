@@ -13,6 +13,9 @@ export interface UICallbacks {
     onResumeGame: () => void;
     onRestartGame: () => void;
     onBackToMenu: () => void;
+    onMoveLeft?: () => void;
+    onMoveRight?: () => void;
+    onToggleMute?: () => void;
 }
 
 export class UIManager {
@@ -29,6 +32,8 @@ export class UIManager {
     private questionDisplay: HTMLDivElement | null = null;
     private pauseButton: HTMLButtonElement | null = null;
     private chatPanel: HTMLDivElement | null = null;
+    private mobileControls: HTMLDivElement | null = null;
+    private muteButton: HTMLButtonElement | null = null;
     
     // Current selection
     private selectedTopic: string = 'Programming';
@@ -62,6 +67,7 @@ export class UIManager {
         this.createResultsScreen();
         this.createHUD();
         this.createQuestionDisplay();
+        this.createMobileControls();
         this.createChatPanel();
         
         // Setup keyboard shortcuts
@@ -417,7 +423,7 @@ export class UIManager {
             top: 10px;
             right: 10px;
             display: flex;
-            gap: 15px;
+            gap: 10px;
             align-items: center;
             pointer-events: auto;
         `;
@@ -426,26 +432,44 @@ export class UIManager {
                 background: rgba(15, 10, 35, 0.9);
                 border: 2px solid rgba(100, 200, 255, 0.5);
                 border-radius: 10px;
-                padding: 8px 16px;
+                padding: 6px 12px;
                 color: #fff;
-                font-size: 18px;
+                font-size: clamp(14px, 4vw, 18px);
                 font-weight: bold;
             ">
                 Score: <span id="score-value">0</span>/<span id="score-total">10</span>
             </div>
+            <button id="mute-btn" style="
+                background: rgba(15, 10, 35, 0.9);
+                border: 2px solid rgba(100, 200, 100, 0.5);
+                border-radius: 10px;
+                padding: 6px 12px;
+                color: #fff;
+                font-size: clamp(16px, 4vw, 20px);
+                cursor: pointer;
+                transition: all 0.2s;
+            ">🔊</button>
             <button id="pause-btn" style="
                 background: rgba(15, 10, 35, 0.9);
                 border: 2px solid rgba(255, 200, 100, 0.5);
                 border-radius: 10px;
-                padding: 8px 14px;
+                padding: 6px 12px;
                 color: #fff;
-                font-size: 18px;
+                font-size: clamp(16px, 4vw, 20px);
                 cursor: pointer;
                 transition: all 0.2s;
             ">⏸️</button>
         `;
         this.hudElement.style.display = 'none';
         this.container.appendChild(this.hudElement);
+        
+        // Setup mute button
+        this.muteButton = this.hudElement.querySelector('#mute-btn') as HTMLButtonElement;
+        this.muteButton.addEventListener('click', () => {
+            if (this.callbacks.onToggleMute) {
+                this.callbacks.onToggleMute();
+            }
+        });
         
         // Setup pause button
         this.pauseButton = this.hudElement.querySelector('#pause-btn') as HTMLButtonElement;
@@ -466,17 +490,89 @@ export class UIManager {
             background: rgba(15, 10, 35, 0.9);
             border: 2px solid rgba(100, 150, 255, 0.5);
             border-radius: 12px;
-            padding: 12px 25px;
+            padding: 10px 15px;
             color: white;
-            font-size: 20px;
+            font-size: clamp(14px, 4vw, 20px);
             font-weight: bold;
             text-align: center;
             z-index: 1000;
             box-shadow: 0 4px 20px rgba(0, 100, 255, 0.3);
-            max-width: 70%;
+            max-width: 85%;
+            width: auto;
             display: none;
         `;
         this.container.appendChild(this.questionDisplay);
+    }
+
+    private createMobileControls(): void {
+        // Only show on touch devices or narrow screens
+        const isMobile = 'ontouchstart' in window || window.innerWidth < 768;
+        
+        this.mobileControls = document.createElement('div');
+        this.mobileControls.id = 'mobile-controls';
+        this.mobileControls.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            display: ${isMobile ? 'flex' : 'none'};
+            justify-content: space-between;
+            padding: 0 20px;
+            pointer-events: none;
+            z-index: 999;
+        `;
+        
+        const buttonStyle = `
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: rgba(15, 10, 35, 0.8);
+            border: 3px solid rgba(100, 200, 255, 0.5);
+            color: #64c8ff;
+            font-size: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            transition: all 0.15s;
+        `;
+        
+        this.mobileControls.innerHTML = `
+            <button id="mobile-left" style="${buttonStyle}">◀</button>
+            <button id="mobile-right" style="${buttonStyle}">▶</button>
+        `;
+        
+        this.mobileControls.style.display = 'none'; // Hidden by default
+        this.container.appendChild(this.mobileControls);
+        
+        // Setup touch events with active feedback
+        const leftBtn = this.mobileControls.querySelector('#mobile-left') as HTMLButtonElement;
+        const rightBtn = this.mobileControls.querySelector('#mobile-right') as HTMLButtonElement;
+        
+        const addTouchFeedback = (btn: HTMLButtonElement) => {
+            btn.addEventListener('touchstart', () => {
+                btn.style.background = 'rgba(100, 200, 255, 0.3)';
+                btn.style.transform = 'scale(0.95)';
+            });
+            btn.addEventListener('touchend', () => {
+                btn.style.background = 'rgba(15, 10, 35, 0.8)';
+                btn.style.transform = 'scale(1)';
+            });
+        };
+        
+        addTouchFeedback(leftBtn);
+        addTouchFeedback(rightBtn);
+        
+        leftBtn.addEventListener('click', () => {
+            if (this.callbacks.onMoveLeft) this.callbacks.onMoveLeft();
+        });
+        
+        rightBtn.addEventListener('click', () => {
+            if (this.callbacks.onMoveRight) this.callbacks.onMoveRight();
+        });
     }
 
     updateScore(score: number, total: number): void {
@@ -484,6 +580,12 @@ export class UIManager {
         const scoreTotal = this.hudElement?.querySelector('#score-total');
         if (scoreValue) scoreValue.textContent = score.toString();
         if (scoreTotal) scoreTotal.textContent = total.toString();
+    }
+
+    updateMuteButton(isMuted: boolean): void {
+        if (this.muteButton) {
+            this.muteButton.textContent = isMuted ? '🔇' : '🔊';
+        }
     }
 
     showQuestion(id: number, text: string, answers?: string[]): void {
@@ -523,6 +625,10 @@ export class UIManager {
         if (this.resultsScreen) this.resultsScreen.style.display = 'none';
         if (this.hudElement) this.hudElement.style.display = 'none';
         if (this.questionDisplay) this.questionDisplay.style.display = 'none';
+        if (this.mobileControls) this.mobileControls.style.display = 'none';
+        
+        // Detect mobile for showing controls
+        const isMobile = 'ontouchstart' in window || window.innerWidth < 768;
         
         // Show appropriate screen
         switch (screen) {
@@ -540,6 +646,7 @@ export class UIManager {
             case 'game':
                 if (this.hudElement) this.hudElement.style.display = 'flex';
                 if (this.questionDisplay) this.questionDisplay.style.display = 'block';
+                if (this.mobileControls && isMobile) this.mobileControls.style.display = 'flex';
                 break;
             case 'paused':
                 if (this.pauseScreen) this.pauseScreen.style.display = 'flex';

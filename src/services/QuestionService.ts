@@ -13,8 +13,8 @@ export interface QuestionRequest {
 }
 
 // Worker URL - update this after deploying your Cloudflare Worker
-const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://edurunner-api.workers.dev';
-// const WORKER_URL = "http://localhost:8787"
+// const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://edurunner-api.workers.dev';
+const WORKER_URL = "http://localhost:8787"
 
 // Fallback questions for when API is unavailable (demo/offline mode)
 const FALLBACK_QUESTIONS: Record<string, Question[]> = {

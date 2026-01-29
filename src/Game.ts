@@ -13,6 +13,8 @@ import { questionService } from './services/QuestionService';
 import type { Question } from './services/QuestionService';
 import { scoreManager } from './services/ScoreManager';
 import { UIManager } from './services/UIManager';
+import { initAudioManager } from './services/AudioManager';
+import type { AudioManager } from './services/AudioManager';
 
 export type GameState = 'menu' | 'loading' | 'playing' | 'paused' | 'results';
 
@@ -26,6 +28,7 @@ export class Game {
     private portalManager: PortalManager;
     private camera: ArcRotateCamera;
     private ui: UIManager;
+    private audioManager: AudioManager;
     
     private state: GameState = 'menu';
     private currentQuestionIndex: number = 0;
@@ -47,7 +50,8 @@ export class Game {
         this.engine = new Engine(this.canvas, true, {
             preserveDrawingBuffer: true,
             stencil: true,
-            antialias: true
+            antialias: true,
+            audioEngine: true  // Required for Babylon.js 8.0+
         });
         
         // Create scene
@@ -74,12 +78,21 @@ export class Game {
             lanePositions
         );
         
+        // Initialize audio manager
+        this.audioManager = initAudioManager(this.scene);
+        
         // Create UI Manager with callbacks
         this.ui = new UIManager({
             onStartGame: (topic, difficulty, questionCount) => this.startGame(topic, difficulty, questionCount),
             onResumeGame: () => this.togglePause(),
             onRestartGame: () => this.restartGame(),
             onBackToMenu: () => this.backToMenu(),
+            onMoveLeft: () => this.player?.moveLeft(),
+            onMoveRight: () => this.player?.moveRight(),
+            onToggleMute: () => {
+                const isMuted = this.audioManager?.toggleMute() ?? false;
+                this.ui.updateMuteButton(isMuted);
+            },
         });
         
         // Connect score manager to UI
@@ -162,6 +175,9 @@ export class Game {
             this.state = 'playing';
             this.spawnNextPortals();
             
+            // Start background music
+            this.audioManager.startMusic();
+            
         } catch (error) {
             console.error('Failed to load questions:', error);
             // Show error and go back to menu
@@ -190,10 +206,12 @@ export class Game {
         if (this.state === 'playing') {
             this.state = 'paused';
             this.ui.showScreen('paused');
+            this.audioManager.pauseMusic();
             console.log('Game paused');
         } else if (this.state === 'paused') {
             this.state = 'playing';
             this.ui.showScreen('game');
+            this.audioManager.resumeMusic();
             console.log('Game resumed');
         }
     }
@@ -209,6 +227,7 @@ export class Game {
         this.activePortalSet = [];
         this.ui.showScreen('menu');
         this.ui.hideQuestion();
+        this.audioManager.stopMusic();
     }
 
     private createCamera(): ArcRotateCamera {
@@ -225,7 +244,14 @@ export class Game {
         camera.lowerAlphaLimit = camera.upperAlphaLimit = -Math.PI / 2;
         camera.lowerBetaLimit = camera.upperBetaLimit = Math.PI / 2.8;
         camera.lowerRadiusLimit = camera.upperRadiusLimit = 15;
-        camera.fov = 0.8;
+        
+        // Adjust FOV based on screen aspect ratio for mobile
+        this.adjustCameraForScreen(camera);
+        
+        // Re-adjust on resize
+        window.addEventListener('resize', () => {
+            this.adjustCameraForScreen(camera);
+        });
         
         // Subtle camera movement
         let cameraTime = 0;
@@ -235,6 +261,22 @@ export class Game {
         });
         
         return camera;
+    }
+
+    private adjustCameraForScreen(camera: ArcRotateCamera): void {
+        const aspectRatio = window.innerWidth / window.innerHeight;
+        
+        // For portrait/mobile screens, use wider FOV to see all lanes
+        if (aspectRatio < 1) {
+            // Portrait mode - need much wider FOV
+            camera.fov = 1.2;
+        } else if (aspectRatio < 1.5) {
+            // Narrow screens
+            camera.fov = 1.0;
+        } else {
+            // Normal desktop
+            camera.fov = 0.8;
+        }
     }
 
     private update(deltaTime: number): void {
@@ -323,6 +365,9 @@ export class Game {
     private endGame(): void {
         this.state = 'results';
         
+        // Stop background music
+        this.audioManager.stopMusic();
+        
         // Save score and show results
         const gameScore = scoreManager.saveGame();
         
@@ -341,11 +386,13 @@ export class Game {
 
     private showCorrectFeedback(): void {
         this.ui.showFeedbackFlash(true);
+        this.audioManager.playCorrect();
         this.cameraShake(0.1, 200);
     }
 
     private showWrongFeedback(): void {
         this.ui.showFeedbackFlash(false);
+        this.audioManager.playWrong();
         this.cameraShake(0.3, 300);
     }
 
@@ -383,7 +430,6 @@ export class Game {
 
     private spawnNextPortals(): void {
         const question = this.questions[this.currentQuestionIndex];
-        console.log("Testing Question: ", question)
         
         // Spawn portals and get shuffled answers (in lane order: Left, Center, Right)
         const { portals, displayAnswers } = this.portalManager.spawnPortalSet({
