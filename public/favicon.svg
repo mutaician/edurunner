@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="portalGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="50%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#ec4899"/>
+    </linearGradient>
+    <linearGradient id="runnerGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#fbbf24"/>
+      <stop offset="100%" style="stop-color:#f59e0b"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="48" fill="#1e1b4b"/>
+  
+  <!-- Portal ring (outer) -->
+  <ellipse cx="50" cy="55" rx="35" ry="25" fill="none" stroke="url(#portalGrad)" stroke-width="4" filter="url(#glow)"/>
+  
+  <!-- Portal inner glow -->
+  <ellipse cx="50" cy="55" rx="28" ry="18" fill="url(#portalGrad)" opacity="0.3"/>
+  
+  <!-- Running figure (proper sprinting silhouette) -->
+  <g fill="url(#runnerGrad)">
+    <!-- Head (forward lean) -->
+    <circle cx="54" cy="24" r="6.5"/>
+    <!-- Torso (leaning forward aggressively) -->
+    <rect x="50" y="29" width="6" height="12" rx="2" transform="rotate(25 53 35)"/>
+    <!-- Back arm (extended behind) -->
+    <rect x="40" y="34" width="4" height="10" rx="2" transform="rotate(-70 42 39)"/>
+    <!-- Forward arm (bent, driving forward) -->
+    <rect x="56" y="28" width="4" height="8" rx="2" transform="rotate(45 58 32)"/>
+    <rect x="59" y="32" width="4" height="7" rx="2" transform="rotate(-10 61 35.5)"/>
+    <!-- Back leg (fully extended behind) -->
+    <rect x="42" y="40" width="4" height="12" rx="2" transform="rotate(-75 44 46)"/>
+    <!-- Forward thigh (knee high) -->
+    <rect x="52" y="38" width="4" height="9" rx="2" transform="rotate(55 54 42.5)"/>
+    <!-- Forward shin (driving down) -->
+    <rect x="56" y="44" width="3.5" height="8" rx="2" transform="rotate(15 57.75 48)"/>
+  </g>
+  
+  <!-- Speed lines -->
+  <g stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round" opacity="0.6">
+    <line x1="28" y1="35" x2="22" y2="35"/>
+    <line x1="30" y1="42" x2="24" y2="42"/>
+    <line x1="26" y1="49" x2="20" y2="49"/>
+  </g>
+  
+  <!-- Lightbulb (education symbol) -->
+  <g fill="#fbbf24" opacity="0.9">
+    <circle cx="72" cy="25" r="5"/>
+    <rect x="70" y="29" width="4" height="3" rx="1"/>
+  </g>
+  
+  <!-- Sparkles around lightbulb -->
+  <g stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round">
+    <line x1="72" y1="16" x2="72" y2="13"/>
+    <line x1="81" y1="25" x2="84" y2="25"/>
+    <line x1="78" y1="19" x2="80" y2="17"/>
+    <line x1="78" y1="31" x2="80" y2="33"/>
+  </g>
+</svg>
